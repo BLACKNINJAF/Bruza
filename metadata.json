@@ -1,0 +1,6 @@
+{
+  "name": "TaskFlow",
+  "description": "Task management app with real-time sync, intuitive drag-and-drop organization, and offline access capabilities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

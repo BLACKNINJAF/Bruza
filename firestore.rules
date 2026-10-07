@@ -1,0 +1,112 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidBoard(data) {
+      return data.id is string && isValidId(data.id) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 100 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('color' in data) || (data.color is string && data.color.size() <= 20)) &&
+             (!('icon' in data) || (data.icon is string && data.icon.size() <= 50)) &&
+             (!('columns' in data) || (data.columns is list && data.columns.size() <= 10 && (data.columns.size() == 0 || data.columns[0] is string)));
+    }
+
+    function isValidTask(data) {
+      return data.id is string && isValidId(data.id) &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.boardId is string && isValidId(data.boardId) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 5000)) &&
+             data.status is string && (data.status in ['todo', 'in_progress', 'review', 'done']) &&
+             data.priority is string && (data.priority in ['low', 'medium', 'high', 'urgent']) &&
+             data.order is int &&
+             data.isCompleted is bool &&
+             (!('dueDate' in data) || data.dueDate == null || data.dueDate is timestamp) &&
+             (!('tags' in data) || (data.tags is list && data.tags.size() <= 20 && (data.tags.size() == 0 || data.tags[0] is string)));
+    }
+
+    // Boards Collection
+    match /boards/{boardId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(boardId) &&
+                       incoming().id == boardId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['id', 'userId', 'title', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['id', 'userId', 'title', 'description', 'color', 'icon', 'columns', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidBoard(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(boardId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().id == existing().id &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidBoard(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'color', 'icon', 'columns', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(boardId) && existing().userId == request.auth.uid;
+    }
+
+    // Tasks Collection
+    match /tasks/{taskId} {
+      allow get: if isSignedIn() && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(taskId) &&
+                       incoming().id == taskId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['id', 'userId', 'boardId', 'title', 'status', 'priority', 'order', 'isCompleted', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['id', 'userId', 'boardId', 'title', 'description', 'status', 'priority', 'order', 'dueDate', 'tags', 'isCompleted', 'createdAt', 'updatedAt']) &&
+                       incoming().createdAt is timestamp &&
+                       incoming().createdAt <= request.time &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidTask(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(taskId) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().id == existing().id &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt is timestamp &&
+                       incoming().updatedAt <= request.time &&
+                       isValidTask(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'boardId', 'status', 'priority', 'order', 'dueDate', 'tags', 'isCompleted', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(taskId) && existing().userId == request.auth.uid;
+    }
+  }
+}
